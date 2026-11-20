@@ -67,7 +67,6 @@ class OverlayService : Service() {
                 x = 30; y = 300
             }
 
-            // استخدام View.inflate بدل LayoutInflater لتجنب المشاكل
             val v = View.inflate(this, R.layout.overlay_elixir, null)
             val enemyText = v.findViewById<TextView>(R.id.enemyElixir)
             val myText = v.findViewById<TextView>(R.id.myElixir)
