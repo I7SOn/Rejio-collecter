@@ -3,6 +3,7 @@ package com.elixirtracker
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
@@ -32,8 +33,6 @@ class ScreenCaptureService : Service() {
         @Volatile var screenW: Int = 0
         @Volatile var screenH: Int = 0
         @Volatile var running: Boolean = false
-
-        fun getLatest(): Bitmap? = latestBitmap
     }
 
     private var projection: MediaProjection? = null
@@ -47,21 +46,39 @@ class ScreenCaptureService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ch = NotificationChannel(CHANNEL_ID, "Elixir Capture", NotificationManager.IMPORTANCE_LOW)
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
                 val rc = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
                 val rd = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
-                if (rc != -1 && rd != null) startCapture(rc, rd)
+                if (rc != -1 && rd != null) {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            startForeground(NOTIF_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                        } else {
+                            startForeground(NOTIF_ID, buildNotification())
+                        }
+                        startCapture(rc, rd)
+                    } catch (e: Exception) {
+                        stopSelf()
+                    }
+                }
             }
             ACTION_STOP -> stopCapture()
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun startCapture(resultCode: Int, data: Intent) {
         if (running) return
-        startForeground(NOTIF_ID, buildNotification())
 
         val mgr = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projection = mgr.getMediaProjection(resultCode, data)
@@ -72,9 +89,7 @@ class ScreenCaptureService : Service() {
         screenW = metrics.widthPixels
         screenH = metrics.heightPixels
 
-        imageReader = ImageReader.newInstance(
-            screenW, screenH, android.graphics.PixelFormat.RGBA_8888, 2
-        )
+        imageReader = ImageReader.newInstance(screenW, screenH, android.graphics.PixelFormat.RGBA_8888, 2)
 
         virtualDisplay = projection?.createVirtualDisplay(
             "ElixirCapture", screenW, screenH, metrics.densityDpi,
@@ -90,10 +105,7 @@ class ScreenCaptureService : Service() {
                 val pixelStride = plane.pixelStride
                 val rowStride = plane.rowStride
                 val rowPadding = rowStride - pixelStride * screenW
-                val bmp = Bitmap.createBitmap(
-                    screenW + rowPadding / pixelStride,
-                    screenH, Bitmap.Config.ARGB_8888
-                )
+                val bmp = Bitmap.createBitmap(screenW + rowPadding / pixelStride, screenH, Bitmap.Config.ARGB_8888)
                 bmp.copyPixelsFromBuffer(buffer)
                 latestBitmap = if (rowPadding != 0) {
                     val cropped = Bitmap.createBitmap(bmp, 0, 0, screenW, screenH)
@@ -110,9 +122,10 @@ class ScreenCaptureService : Service() {
         engine.start()
         detector.reset()
 
+        loopScope?.cancel() // إلغاء أي حلقة قديمة
         loopScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
         loopScope?.launch {
-            while (running) {
+            while (running && isActive) {
                 try {
                     engine.tick()
                     val now = System.currentTimeMillis()
@@ -126,7 +139,9 @@ class ScreenCaptureService : Service() {
                             }
                         }
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    // تجاهل أي خطأ في الحلقة لكي لا يتوقف التطبيق
+                }
                 delay(100)
             }
         }
@@ -146,10 +161,6 @@ class ScreenCaptureService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel(CHANNEL_ID, "Elixir Capture", NotificationManager.IMPORTANCE_LOW)
-            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
-        }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("ElixirTracker")
             .setContentText("يقرأ الشاشة")
