@@ -53,7 +53,6 @@ class MainActivity : AppCompatActivity() {
         btnOverlay = findViewById(R.id.btnOverlay)
         btnReset = findViewById(R.id.btnReset)
 
-        // طلب صلاحية الإشعارات (ضروري لأندرويد 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
