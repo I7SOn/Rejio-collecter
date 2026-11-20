@@ -20,14 +20,12 @@ class ElixirEngine {
     private val _unitsSeen = MutableStateFlow(0)
     val unitsSeen: StateFlow<Int> = _unitsSeen
 
-    private var lastTickAt = 0L
     private var accumulatedSpend = 0f
     private var unitCount = 0
 
     fun start() {
         clock.reset()
         clock.start()
-        lastTickAt = System.currentTimeMillis()
         accumulatedSpend = 0f
         unitCount = 0
         _enemyElixir.value = STARTING_ELIXIR
@@ -50,17 +48,18 @@ class ElixirEngine {
 
     fun tick() {
         clock.tick()
-        val raw = STARTING_ELIXIR +
-                (clock.elapsed.value / clock.rate.value) -
-                accumulatedSpend
+        
+        // حساب الإكسير بأمان
+        val elapsed = clock.elapsed.value
+        val rate = clock.rate.value
+        val raw = STARTING_ELIXIR + (elapsed / rate) - accumulatedSpend
+        
         _enemyElixir.value = raw.coerceIn(MIN_ELIXIR, MAX_ELIXIR)
 
         ElixirState.enemyElixir.value = _enemyElixir.value
-        ElixirState.myElixir.value =
-            (STARTING_ELIXIR + clock.elapsed.value / clock.rate.value)
-                .coerceIn(MIN_ELIXIR, MAX_ELIXIR)
+        ElixirState.myElixir.value = (STARTING_ELIXIR + elapsed / rate).coerceIn(MIN_ELIXIR, MAX_ELIXIR)
         ElixirState.unitsSeen.value = unitCount
-        ElixirState.elapsed.value = clock.elapsed.value
+        ElixirState.elapsed.value = elapsed
         ElixirState.isOvertime.value = clock.isOvertime()
     }
 
