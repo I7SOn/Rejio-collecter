@@ -1,8 +1,10 @@
 package com.elixirtracker
 
+import android.Manifest
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
@@ -34,6 +36,14 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val notifLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            status.text = "تنبيه: صلاحية الإشعارات مرفوضة، قد لا يعمل Overlay"
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -42,6 +52,11 @@ class MainActivity : AppCompatActivity() {
         btnCapture = findViewById(R.id.btnCapture)
         btnOverlay = findViewById(R.id.btnOverlay)
         btnReset = findViewById(R.id.btnReset)
+
+        // طلب صلاحية الإشعارات (ضروري لأندرويد 13+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         btnCapture.setOnClickListener {
             val mgr = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
@@ -54,9 +69,14 @@ class MainActivity : AppCompatActivity() {
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                     Uri.parse("package:$packageName")
                 ))
+                status.text = "الرجاء تفعيل صلاحية العرض فوق التطبيقات"
             } else {
-                startService(Intent(this, OverlayService::class.java))
-                status.text = "Overlay: يعمل"
+                try {
+                    startService(Intent(this, OverlayService::class.java))
+                    status.text = "Overlay: يعمل"
+                } catch (e: Exception) {
+                    status.text = "خطأ في Overlay: ${e.message}"
+                }
             }
         }
 
